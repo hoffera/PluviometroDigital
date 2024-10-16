@@ -9,21 +9,30 @@
 #include "esp_http_client.h"
 #include "driver/gpio.h"
 #include <freertos/semphr.h>
+#include "freertos/queue.h"
 
-#define THINGSPEAK_API_KEY "ZJ3GBSXHUDQW343W"
+#define THINGSPEAK_API_KEY "T6Q5FMMSL6AZG5U2"
 #define THINGSPEAK_SERVER "api.thingspeak.com"
 
 // Defina suas credenciais Wi-Fi
-#define SSID "Ribeiro" // Substitua pelo seu SSID
-#define PASS "14221422" // Substitua pela sua senha
+#define SSID "Redmi 9" // Substitua pelo seu SSID
+#define PASS "12345678" // Substitua pela sua senha
 #define RED_SWITCH_PIN  23
 
 #define WATER_VOLUME_PER_OSCILATION 5.0
+
+static QueueHandle_t gpio_queue = NULL;
 
 static EventGroupHandle_t WifiEventGroup;
 const int CONNECTED_BIT = BIT0;
 int number_of_oscilations = 0;
 SemaphoreHandle_t xMutex;
+
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+    int gpio_num = (int) arg;
+    // Envia o número do pino para a fila
+    xQueueSendFromISR(gpio_queue, &gpio_num, NULL);
+}
 
 static void wifi_event_handler(
     void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -108,16 +117,17 @@ void check_number_of_oscilations(void *pvParameters)
 }
 
 void sensor(void *pvParameters) {
+    int gpio_num;
     while (true) {
         // Verifica se o sensor reed switch KY-025 foi ativado
-        if (gpio_get_level(RED_SWITCH_PIN) == 0) {
+        if (xQueueReceive(gpio_queue, &gpio_num, portMAX_DELAY)) {
             printf("Basculou\n");
             if (xSemaphoreTake(xMutex, portMAX_DELAY)) {
                 number_of_oscilations++;
                 xSemaphoreGive(xMutex);
             }
         }
-        // vTaskDelay(10/portTICK_PERIOD_MS);
+        vTaskDelay(10/portTICK_PERIOD_MS);
         // number_of_oscilations++;
         // printf("Numero de oscilacoes: %d\n", number_of_oscilations);   
         // vTaskDelay(10000/portTICK_PERIOD_MS);
@@ -135,6 +145,11 @@ void app_main(void)
     esp_rom_gpio_pad_select_gpio(RED_SWITCH_PIN);
     gpio_set_direction(RED_SWITCH_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode(RED_SWITCH_PIN, GPIO_PULLUP_ONLY); 
+    gpio_set_intr_type(RED_SWITCH_PIN, GPIO_INTR_NEGEDGE);
+
+    gpio_queue = xQueueCreate(10, sizeof(int));
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(RED_SWITCH_PIN, gpio_isr_handler, (void*) RED_SWITCH_PIN);
 
     xMutex = xSemaphoreCreateMutex();
     xTaskCreate(sensor, "Sensor Task", 2048, NULL, 1, NULL);
