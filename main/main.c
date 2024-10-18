@@ -15,11 +15,14 @@
 #define THINGSPEAK_SERVER "api.thingspeak.com"
 
 // Defina suas credenciais Wi-Fi
-#define SSID "Redmi 9" // Substitua pelo seu SSID
-#define PASS "12345678" // Substitua pela sua senha
-#define RED_SWITCH_PIN  23
+#define SSID "Ribeiro" // Substitua pelo seu SSID
+#define PASS "14221422" // Substitua pela sua senha
+#define RED_SWITCH_PIN  2
 
-#define WATER_VOLUME_PER_OSCILATION 5.0
+// Dimensões do funil
+#define FUNNEL_AREA ((73.0/1000.0) * (25.0/1000.0)) // 73mm x 25mm. Ajuste conforme as dimensões
+
+#define WATER_VOLUME_PER_OSCILATION 0.005 // volume de água suficiente para fazer o basculante mudar de posição em l
 
 static QueueHandle_t gpio_queue = NULL;
 
@@ -104,7 +107,7 @@ void check_number_of_oscilations(void *pvParameters)
     while (true) {
         vTaskDelay(16000/portTICK_PERIOD_MS);
         if(number_of_oscilations > 0){
-            float value = number_of_oscilations * WATER_VOLUME_PER_OSCILATION;
+            float value = (number_of_oscilations * WATER_VOLUME_PER_OSCILATION)/FUNNEL_AREA;
             esp_err_t result = send_data_to_thingspeak(value);
             if(result == ESP_OK){
                 if (xSemaphoreTake(xMutex, portMAX_DELAY)) {
